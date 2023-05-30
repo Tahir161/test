@@ -1,0 +1,62 @@
+# Define GLobal Variables
+emp = frappe.get_doc("Employee", doc.employee)
+month = frappe.utils.formatdate(doc.end_date,"MMM")
+year = str(doc.end_date).split("-")[0]
+
+# Calcualte Feb Days 
+if month == "Feb":
+    if int(year) % 4 == 0 and (int(year) % 100 != 0 or int(year) % 400 == 0):
+        feb_days = 1   
+    else:
+        feb_days = 2
+else:
+    feb_days = 0
+
+# Calculate start date
+if str(emp.date_of_joining) <=  doc.start_date:
+    start_date = doc.start_date
+else:
+    start_date = emp.date_of_joining
+    
+# Calculate end date
+if emp.relieving_date is None:
+    last_date_of_month = str(doc.end_date).split("-")[2]
+    if int(last_date_of_month) > 30:
+        end_date = frappe.utils.add_days(doc.end_date, (-1))
+    else:
+        end_date = doc.end_date
+else:
+    end_date = emp.relieving_date
+
+# Calculate Working days
+working_days = 30
+
+# Calculate Absent Days
+absent_days_list = frappe.get_all("Attendance",filters={
+            "employee": ["=", doc.employee],
+            "status": ["=", "Absent"],
+            "attendance_date": ["Between", [start_date, end_date]],
+            "docstatus": ["=", 1]
+        })
+absent_days = len(absent_days_list)
+
+# Calculate Payment Days
+if emp.relieving_date is not None:
+    employee_payment_days = (frappe.utils.date_diff(end_date,start_date) + 1)
+    payment_days = employee_payment_days - absent_days - doc.leave_without_pay
+elif str(emp.date_of_joining) > doc.start_date:
+    employee_payment_days = (frappe.utils.date_diff(end_date,start_date) + 1) + feb_days
+    payment_days = employee_payment_days - absent_days - doc.leave_without_pay
+else:
+    payment_days = working_days - absent_days - doc.leave_without_pay
+    
+# Setting Working Absent and Payment Days
+doc.absent_days = absent_days
+doc.total_working_days = working_days
+doc.payment_days = payment_days
+
+# Calculate Pay
+doc.calculate_net_pay()
+doc.compute_year_to_date()
+doc.compute_month_to_date()
+doc.compute_component_wise_year_to_date()
